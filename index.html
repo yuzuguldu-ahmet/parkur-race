@@ -102,6 +102,39 @@
     margin-top: 6px;
   }
 
+  #characterGrid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin: 10px 0 14px;
+  }
+
+  .char-option {
+    cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    padding: 4px;
+    text-align: center;
+    background: #0d151b;
+  }
+
+  .char-option.selected {
+    border-color: #4fc3f7;
+  }
+
+  .char-swatch {
+    width: 100%;
+    height: 26px;
+    border-radius: 4px;
+    margin-bottom: 3px;
+  }
+
+  .char-name {
+    font-size: 8px;
+    color: #cfd8dc;
+    line-height: 1.15;
+  }
+
   /* ---- Yarış ekranı ---- */
   #raceScreen { display: none; flex-direction: column; align-items: center; }
 
@@ -191,6 +224,8 @@
   <!-- ---- Lobi ekranı ---- -->
   <div class="panel" id="lobbyScreen">
     <input type="text" id="nameInput" placeholder="İsmini yaz" maxlength="14">
+    <div style="font-size:11px; color:#78909c; margin-top:10px;">KARAKTERİNİ SEÇ</div>
+    <div id="characterGrid"></div>
     <button id="createRoomBtn">Yeni Parti Kur</button>
     <div style="margin: 14px 0; color:#546e7a; font-size:12px;">— veya —</div>
     <input type="text" id="joinCodeInput" placeholder="Oda kodu (ör. AB3XZ)" maxlength="5" style="text-transform:uppercase;">
@@ -231,7 +266,7 @@
   // Render/Railway gibi bir servise yükledikten sonra sana verilen
   // adresi buraya yapıştırman gerekiyor.
   // ============================================================
-  const SERVER_URL = 'SUNUCU_ADRESIN_BURAYA';
+  const SERVER_URL = 'https://parkur-race.onrender.com';
 
   const socket = io(SERVER_URL, { transports: ['websocket', 'polling'] });
 
@@ -271,17 +306,157 @@
   let finishDistance = 3000;
   let players = []; // sunucudan gelen oyuncu listesi
 
+  // ---- Renkli pixel-art karakterler: 8 özgün tasarım ----
+  const RUNNER_PX = 2.4;
+
+  // Üst gövde (kafa+saç+tişört+kollar) tüm karakterlerde aynı şekil,
+  // sadece renkler (colors) farklı. Alt kısım (bacak+araç) her karakterde
+  // farklı bir "araç" göstersin diye ayrı ayrı tanımlı.
+  const TOP_ROWS = [
+    ".....hhhhhh.....",
+    ".....hhhhhh.....",
+    ".....kkkkkk.....",
+    ".....kkkkek.....",
+    ".....kkkkkk.....",
+    ".....kkkkkk.....",
+    "....ssssssss....",
+    ".kkksssssssskkk.",
+    ".kkksssssssskkk.",
+    "....ssssssss....",
+    "....ssssssss....",
+    "....ssssssss...."
+  ];
+
+  const STANDING_LEGS = [
+    ".....ppp.ppp....",
+    ".....ppp.ppp....",
+    ".....ppp.ppp...."
+  ];
+  const TOGETHER_LEGS = [
+    ".......pp.......",
+    ".......pp.......",
+    ".......pp......."
+  ];
+
+  const CHARACTERS = [
+    {
+      name: 'Kaykaycı Kai',
+      colors: { h: '#4e342e', k: '#ffcc80', e: '#212121', s: '#42a5f5', p: '#263238', o: '#212121', b: '#ff7043', w: '#111111' },
+      bottom: [...STANDING_LEGS,
+        "....ooooooooo...",
+        "..bbbbbbbbbbbb..",
+        "..bbbbbbbbbbbb..",
+        "...ww......ww...",
+        "...ww......ww..."]
+    },
+    {
+      name: 'Bisikletli Ela',
+      colors: { h: '#ffd54f', k: '#ffcc80', e: '#212121', s: '#66bb6a', p: '#263238', o: '#212121', b: '#37474f', w: '#111111' },
+      bottom: [...STANDING_LEGS,
+        "....o......o....",
+        ".....bbbbbbb....",
+        "....b......b....",
+        "...ww......ww...",
+        "...ww......ww..."]
+    },
+    {
+      name: 'Scooterlı Sam',
+      colors: { h: '#3e2723', k: '#ffe0b2', e: '#212121', s: '#ab47bc', p: '#263238', o: '#212121', b: '#ffb300', w: '#111111' },
+      bottom: [
+        ".....ppp.ppp....",
+        "....bppp.ppp....",
+        "....bppp.ppp....",
+        "....booooooo....",
+        "..bbbbbbbbbbbb..",
+        "..bbbbbbbbbbbb..",
+        "...ww......ww...",
+        "...ww......ww..."]
+    },
+    {
+      name: 'Tekerlekli Tara',
+      colors: { h: '#8d6e63', k: '#ffcc80', e: '#212121', s: '#ec407a', p: '#263238', o: '#212121', w: '#111111' },
+      bottom: [...TOGETHER_LEGS,
+        ".......oo.......",
+        "......wwww......",
+        ".....w....w.....",
+        "......wwww......",
+        "................"]
+    },
+    {
+      name: 'Paten Peri',
+      colors: { h: '#ffab91', k: '#ffe0b2', e: '#212121', s: '#26c6da', p: '#263238', o: '#d81b60', w: '#111111' },
+      bottom: [...STANDING_LEGS,
+        "....ooo....ooo..",
+        "....o.o....o.o..",
+        "................",
+        "...ww......ww...",
+        "...ww......ww..."]
+    },
+    {
+      name: 'Roket Rıza',
+      colors: { h: '#212121', k: '#ffcc80', e: '#212121', s: '#7e57c2', p: '#263238', o: '#212121', b: '#5c6bc0', f: '#64ffda' },
+      bottom: [...STANDING_LEGS,
+        "....ooooooooo...",
+        "..bbbbbbbbbbbb..",
+        "..bbbbbbbbbbbb..",
+        "...ff.ff.ff.ff..",
+        "................"]
+    },
+    {
+      name: 'Pogo Poyraz',
+      colors: { h: '#6d4c41', k: '#ffcc80', e: '#212121', s: '#ffca28', p: '#263238', o: '#212121', c: '#9e9e9e' },
+      bottom: [...TOGETHER_LEGS,
+        ".......oo.......",
+        ".......cc.......",
+        "......cccc......",
+        ".......cc.......",
+        "......cccc......"]
+    },
+    {
+      name: 'Arabalı Ada',
+      colors: { h: '#d4e157', k: '#ffe0b2', e: '#212121', s: '#ef5350', p: '#263238', o: '#212121', c: '#8d6e63', w: '#111111' },
+      bottom: [...STANDING_LEGS,
+        "....ooooooooo...",
+        ".wccccccccccccw.",
+        ".wccccccccccccw.",
+        ".ww........ww...",
+        "................"]
+    }
+  ];
+
+  let selectedCharacter = 0;
+
+  const characterGridEl = document.getElementById('characterGrid');
+  characterGridEl.innerHTML = CHARACTERS.map((c, i) => `
+    <div class="char-option${i === 0 ? ' selected' : ''}" data-index="${i}">
+      <div class="char-swatch" style="background:${c.colors.s};"></div>
+      <div class="char-name">${c.name}</div>
+    </div>
+  `).join('');
+  characterGridEl.addEventListener('click', (e) => {
+    const opt = e.target.closest('.char-option');
+    if (!opt) return;
+    selectedCharacter = Number(opt.dataset.index);
+    characterGridEl.querySelectorAll('.char-option').forEach(el => el.classList.remove('selected'));
+    opt.classList.add('selected');
+  });
+
+  function getCharacterColor(name) {
+    const found = CHARACTERS.find(c => c.name === name);
+    return found ? found.colors.s : '#4fc3f7';
+  }
+
   // ---- Lobi mantığı ----
   createRoomBtn.addEventListener('click', () => {
     const name = nameInput.value.trim() || 'Oyuncu';
-    socket.emit('create-room', { name });
+    socket.emit('create-room', { name, character: CHARACTERS[selectedCharacter].name });
   });
 
   joinRoomBtn.addEventListener('click', () => {
     const name = nameInput.value.trim() || 'Oyuncu';
     const code = joinCodeInput.value.trim().toUpperCase();
     if (!code) { errorMsg.textContent = 'Lütfen bir oda kodu gir.'; return; }
-    socket.emit('join-room', { code, name });
+    socket.emit('join-room', { code, name, character: CHARACTERS[selectedCharacter].name });
   });
 
   socket.on('connect', () => { myId = socket.id; });
@@ -329,10 +504,11 @@
     raceBarEl.innerHTML = players.map(p => {
       const pct = Math.min(100, (p.distance / finishDistance) * 100);
       const mine = p.id === myId;
+      const color = getCharacterColor(p.character);
       return `
         <div class="race-name">${p.name}${mine ? ' (sen)' : ''}${p.finished ? ' 🏁' : ''}</div>
         <div class="race-lane">
-          <div class="race-marker" style="left:${pct}%;">${mine ? '🦖' : '🏃'}</div>
+          <div class="race-marker" style="left:${pct}%; background:${color}; border-radius:50%; border:2px solid #16222c;"></div>
         </div>
       `;
     }).join('');
@@ -344,6 +520,8 @@
   let myDistance = 0;
   let speed = 3.4; // birim/kare
   let stunFrames = 0;
+  let legFrame = 0;
+  let frameCount = 0;
 
   const runner = {
     y: 0,
@@ -355,6 +533,20 @@
     isJumping: false
   };
   runner.y = GROUND_Y - runner.height;
+
+  function drawColorSprite(grid, colorMap, x, y, px) {
+    for (let row = 0; row < grid.length; row++) {
+      const line = grid[row];
+      for (let col = 0; col < line.length; col++) {
+        const ch = line[col];
+        if (ch !== '.') {
+          ctx.fillStyle = colorMap[ch];
+          ctx.fillRect(x + col * px, y + row * px, px, px);
+        }
+      }
+    }
+  }
+
 
   let obstacles = []; // [{distance, width, height}]
 
@@ -369,10 +561,13 @@
 
   function generateTrack(trackSeed) {
     const rand = mulberry32(trackSeed);
+    const types = ['hurdle', 'spike', 'crate'];
     const list = [];
     let d = 350;
     while (d < finishDistance - 120) {
-      list.push({ distance: d, width: 22, height: 30 + Math.floor(rand() * 20) });
+      const type = types[Math.floor(rand() * types.length)];
+      const height = type === 'crate' ? 34 + Math.floor(rand() * 12) : 28 + Math.floor(rand() * 18);
+      list.push({ distance: d, width: type === 'crate' ? 30 : 24, height, type });
       d += 170 + rand() * 190;
     }
     return list;
@@ -429,10 +624,14 @@
   function update() {
     if (!gameActive || raceOver) return;
 
+    frameCount++;
     if (stunFrames > 0) {
       stunFrames--;
     } else {
       myDistance += speed;
+    }
+    if (!runner.isJumping && frameCount % 6 === 0) {
+      legFrame = (legFrame + 1) % 2;
     }
 
     runner.vy += runner.gravity;
@@ -472,6 +671,45 @@
     }
   }
 
+  function drawHurdle(x, y, width, height) {
+    // İki dikme + üstte bar (klasik atletizm engeli)
+    ctx.fillStyle = '#ff8a65';
+    ctx.fillRect(x - width / 2, y - height, 4, height);
+    ctx.fillRect(x + width / 2 - 4, y - height, 4, height);
+    ctx.fillRect(x - width / 2 - 3, y - height, width + 6, 6);
+  }
+
+  function drawSpike(x, y, width, height) {
+    // Sivri, dişli bir engel (üçgen dizisi)
+    ctx.fillStyle = '#e53935';
+    const teeth = 3;
+    const toothW = width / teeth;
+    for (let i = 0; i < teeth; i++) {
+      const tx = x - width / 2 + i * toothW;
+      ctx.beginPath();
+      ctx.moveTo(tx, y);
+      ctx.lineTo(tx + toothW / 2, y - height);
+      ctx.lineTo(tx + toothW, y);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function drawCrate(x, y, width, height) {
+    // Çapraz çizgili sandık
+    ctx.fillStyle = '#8d6e63';
+    ctx.fillRect(x - width / 2, y - height, width, height);
+    ctx.strokeStyle = '#5d4037';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - width / 2 + 2, y - height + 2, width - 4, height - 4);
+    ctx.beginPath();
+    ctx.moveTo(x - width / 2 + 2, y - height + 2);
+    ctx.lineTo(x + width / 2 - 2, y - 2);
+    ctx.moveTo(x + width / 2 - 2, y - height + 2);
+    ctx.lineTo(x - width / 2 + 2, y - 2);
+    ctx.stroke();
+  }
+
   function draw() {
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#0d151b';
@@ -495,18 +733,26 @@
       ctx.fillText('BİTİŞ', finishScreenX - 10, GROUND_Y - 96);
     }
 
-    // Engeller
-    ctx.fillStyle = '#ef5350';
+    // Engeller (tipe göre farklı görsel)
     obstacles.forEach(o => {
       const x = 100 + (o.distance - myDistance);
       if (x > -30 && x < W + 30) {
-        ctx.fillRect(x - o.width / 2, GROUND_Y - o.height, o.width, o.height);
+        if (o.type === 'spike') drawSpike(x, GROUND_Y, o.width, o.height);
+        else if (o.type === 'crate') drawCrate(x, GROUND_Y, o.width, o.height);
+        else drawHurdle(x, GROUND_Y, o.width, o.height);
       }
     });
 
-    // Koşucu (basit blok karakter)
-    ctx.fillStyle = stunFrames > 0 ? '#ffb74d' : '#4fc3f7';
-    ctx.fillRect(100 - runner.width / 2, runner.y, runner.width, runner.height);
+    // Koşucu (seçilen karakter, hafif inip kalkma animasyonu ile)
+    const character = CHARACTERS[selectedCharacter];
+    const grid = [...TOP_ROWS, ...character.bottom];
+    const bob = runner.isJumping ? 0 : Math.sin(frameCount * 0.35) * 1.5;
+    const spriteX = 100 - (grid[0].length * RUNNER_PX) / 2;
+    const spriteY = runner.y - (grid.length * RUNNER_PX - runner.height) + bob;
+    const colors = stunFrames > 0
+      ? { ...character.colors, s: '#ff8a65' } // çarpınca tişört rengi değişsin (görsel geri bildirim)
+      : character.colors;
+    drawColorSprite(grid, colors, spriteX, spriteY, RUNNER_PX);
   }
 
   function loop() {
