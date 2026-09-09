@@ -124,9 +124,11 @@
 
   .char-swatch {
     width: 100%;
-    height: 26px;
+    height: 52px;
     border-radius: 4px;
     margin-bottom: 3px;
+    background: #050a0d;
+    image-rendering: pixelated;
   }
 
   .char-name {
@@ -429,10 +431,25 @@
   const characterGridEl = document.getElementById('characterGrid');
   characterGridEl.innerHTML = CHARACTERS.map((c, i) => `
     <div class="char-option${i === 0 ? ' selected' : ''}" data-index="${i}">
-      <div class="char-swatch" style="background:${c.colors.s};"></div>
+      <canvas class="char-swatch" width="60" height="52" data-preview="${i}"></canvas>
       <div class="char-name">${c.name}</div>
     </div>
   `).join('');
+
+  // Her karakterin gerçek pixel-art görünümünü küçük önizleme canvas'ına çiz
+  CHARACTERS.forEach((c, i) => {
+    const previewCanvas = characterGridEl.querySelector(`canvas[data-preview="${i}"]`);
+    const pctx = previewCanvas.getContext('2d');
+    const grid = [...TOP_ROWS, ...c.bottom];
+    const px = Math.min(
+      previewCanvas.width / grid[0].length,
+      previewCanvas.height / grid.length
+    );
+    const offsetX = (previewCanvas.width - grid[0].length * px) / 2;
+    const offsetY = (previewCanvas.height - grid.length * px) / 2;
+    drawColorSprite(pctx, grid, c.colors, offsetX, offsetY, px);
+  });
+
   characterGridEl.addEventListener('click', (e) => {
     const opt = e.target.closest('.char-option');
     if (!opt) return;
@@ -534,14 +551,14 @@
   };
   runner.y = GROUND_Y - runner.height;
 
-  function drawColorSprite(grid, colorMap, x, y, px) {
+  function drawColorSprite(targetCtx, grid, colorMap, x, y, px) {
     for (let row = 0; row < grid.length; row++) {
       const line = grid[row];
       for (let col = 0; col < line.length; col++) {
         const ch = line[col];
         if (ch !== '.') {
-          ctx.fillStyle = colorMap[ch];
-          ctx.fillRect(x + col * px, y + row * px, px, px);
+          targetCtx.fillStyle = colorMap[ch];
+          targetCtx.fillRect(x + col * px, y + row * px, px, px);
         }
       }
     }
@@ -752,7 +769,7 @@
     const colors = stunFrames > 0
       ? { ...character.colors, s: '#ff8a65' } // çarpınca tişört rengi değişsin (görsel geri bildirim)
       : character.colors;
-    drawColorSprite(grid, colors, spriteX, spriteY, RUNNER_PX);
+    drawColorSprite(ctx, grid, colors, spriteX, spriteY, RUNNER_PX);
   }
 
   function loop() {
