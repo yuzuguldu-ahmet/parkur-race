@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parkur Yarışı</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: #101820;
+    font-family: 'Courier New', monospace;
+    color: #eaf2f8;
+  }
+
+  h1 { letter-spacing: 2px; margin-bottom: 18px; color: #4fc3f7; }
+
+  .panel {
+    background: #16222c;
+    border: 2px solid #2c3e50;
+    border-radius: 10px;
+    padding: 28px 32px;
+    width: 340px;
+    text-align: center;
+  }
+
+  .panel input {
+    width: 100%;
+    padding: 10px;
+    margin: 8px 0;
+    border-radius: 6px;
+    border: 1px solid #34495e;
+    background: #0d151b;
+    color: #eaf2f8;
+    font-family: inherit;
+    font-size: 15px;
+    text-align: center;
+  }
+
+  .panel button {
+    width: 100%;
+    padding: 10px;
+    margin: 6px 0;
+    border-radius: 6px;
+    border: none;
+    background: #4fc3f7;
+    color: #0d151b;
+    font-family: inherit;
+    font-weight: bold;
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  .panel button.secondary {
+    background: #34495e;
+    color: #eaf2f8;
+  }
+
+  .panel button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  #roomCodeDisplay {
+    font-size: 32px;
+    letter-spacing: 6px;
+    color: #ffd54f;
+    margin: 10px 0;
+    font-weight: bold;
+  }
+
+  #playerList {
+    list-style: none;
+    text-align: left;
+    margin: 12px 0;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+
+  #playerList li {
+    padding: 5px 8px;
+    border-bottom: 1px dashed #2c3e50;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .host-tag {
+    color: #ffd54f;
+    font-size: 11px;
+  }
+
+  #errorMsg {
+    color: #ef5350;
+    font-size: 13px;
+    min-height: 18px;
+    margin-top: 6px;
+  }
+
+  /* ---- Yarış ekranı ---- */
+  #raceScreen { display: none; flex-direction: column; align-items: center; }
+
+  #raceBar {
+    width: 700px;
+    max-width: 92vw;
+    background: #16222c;
+    border: 2px solid #2c3e50;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+  }
+
+  .race-lane {
+    position: relative;
+    height: 18px;
+    background: #0d151b;
+    border-radius: 4px;
+    margin: 4px 0;
+  }
+
+  .race-marker {
+    position: absolute;
+    top: -3px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: left 0.15s linear;
+  }
+
+  .race-name {
+    font-size: 10px;
+    color: #90a4ae;
+  }
+
+  #gameContainer {
+    position: relative;
+    border: 2px solid #4fc3f7;
+    border-radius: 6px;
+    background: #0d151b;
+  }
+
+  canvas { display: block; }
+
+  #countdownOverlay, #resultOverlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    text-align: center;
+  }
+
+  #countdownNumber {
+    font-size: 64px;
+    color: #ffd54f;
+    font-weight: bold;
+  }
+
+  #resultList {
+    list-style: none;
+    margin-top: 12px;
+  }
+
+  #resultList li {
+    padding: 4px 0;
+    font-size: 15px;
+  }
+
+  #instructions {
+    margin-top: 12px;
+    color: #78909c;
+    font-size: 13px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+  <h1>🏁 PARKUR YARIŞI</h1>
+
+  <!-- ---- Lobi ekranı ---- -->
+  <div class="panel" id="lobbyScreen">
+    <input type="text" id="nameInput" placeholder="İsmini yaz" maxlength="14">
+    <button id="createRoomBtn">Yeni Parti Kur</button>
+    <div style="margin: 14px 0; color:#546e7a; font-size:12px;">— veya —</div>
+    <input type="text" id="joinCodeInput" placeholder="Oda kodu (ör. AB3XZ)" maxlength="5" style="text-transform:uppercase;">
+    <button id="joinRoomBtn" class="secondary">Odaya Katıl</button>
+    <div id="errorMsg"></div>
+  </div>
+
+  <!-- ---- Bekleme odası ---- -->
+  <div class="panel" id="waitingScreen" style="display:none;">
+    <div style="font-size:13px; color:#90a4ae;">ODA KODU (arkadaşlarına gönder)</div>
+    <div id="roomCodeDisplay">-----</div>
+    <ul id="playerList"></ul>
+    <button id="startRaceBtn" style="display:none;">Yarışı Başlat</button>
+    <div id="waitingHostNote" style="font-size:12px; color:#90a4ae; margin-top:6px;"></div>
+  </div>
+
+  <!-- ---- Yarış ekranı ---- -->
+  <div id="raceScreen">
+    <div id="raceBar"></div>
+
+    <div id="gameContainer">
+      <canvas id="gameCanvas" width="700" height="280"></canvas>
+      <div id="countdownOverlay"><div id="countdownNumber">3</div></div>
+      <div id="resultOverlay">
+        <h2>🏆 Yarış Bitti!</h2>
+        <ol id="resultList"></ol>
+        <button id="backToLobbyBtn" style="width:200px; margin-top:14px;">Lobiye Dön</button>
+      </div>
+    </div>
+
+    <div id="instructions">Zıplamak için <b>SPACE</b> / <b>↑</b> — Engellere çarpmak seni biraz yavaşlatır, oyunu bitirmez</div>
+  </div>
+
+<script>
+(() => {
+  // ============================================================
+  // KURULUM: Bu istemcinin bağlanacağı sunucu adresi. Sunucuyu
+  // Render/Railway gibi bir servise yükledikten sonra sana verilen
+  // adresi buraya yapıştırman gerekiyor.
+  // ============================================================
+  const SERVER_URL = 'SUNUCU_ADRESIN_BURAYA';
+
+  const socket = io(SERVER_URL, { transports: ['websocket', 'polling'] });
+
+  // ---- Ekran elemanları ----
+  const lobbyScreen = document.getElementById('lobbyScreen');
+  const waitingScreen = document.getElementById('waitingScreen');
+  const raceScreen = document.getElementById('raceScreen');
+
+  const nameInput = document.getElementById('nameInput');
+  const createRoomBtn = document.getElementById('createRoomBtn');
+  const joinCodeInput = document.getElementById('joinCodeInput');
+  const joinRoomBtn = document.getElementById('joinRoomBtn');
+  const errorMsg = document.getElementById('errorMsg');
+
+  const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+  const playerListEl = document.getElementById('playerList');
+  const startRaceBtn = document.getElementById('startRaceBtn');
+  const waitingHostNote = document.getElementById('waitingHostNote');
+
+  const raceBarEl = document.getElementById('raceBar');
+  const countdownOverlay = document.getElementById('countdownOverlay');
+  const countdownNumber = document.getElementById('countdownNumber');
+  const resultOverlay = document.getElementById('resultOverlay');
+  const resultListEl = document.getElementById('resultList');
+  const backToLobbyBtn = document.getElementById('backToLobbyBtn');
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const GROUND_Y = 220;
+
+  let myId = null;
+  let isHost = false;
+  let roomCode = null;
+  let seed = null;
+  let finishDistance = 3000;
+  let players = []; // sunucudan gelen oyuncu listesi
+
+  // ---- Lobi mantığı ----
+  createRoomBtn.addEventListener('click', () => {
+    const name = nameInput.value.trim() || 'Oyuncu';
+    socket.emit('create-room', { name });
+  });
+
+  joinRoomBtn.addEventListener('click', () => {
+    const name = nameInput.value.trim() || 'Oyuncu';
+    const code = joinCodeInput.value.trim().toUpperCase();
+    if (!code) { errorMsg.textContent = 'Lütfen bir oda kodu gir.'; return; }
+    socket.emit('join-room', { code, name });
+  });
+
+  socket.on('connect', () => { myId = socket.id; });
+
+  socket.on('room-created', (data) => enterWaitingRoom(data));
+  socket.on('room-joined', (data) => enterWaitingRoom(data));
+  socket.on('join-error', ({ message }) => { errorMsg.textContent = message; });
+
+  function enterWaitingRoom(data) {
+    roomCode = data.code;
+    seed = data.seed;
+    finishDistance = data.finishDistance;
+    isHost = data.isHost;
+    errorMsg.textContent = '';
+    lobbyScreen.style.display = 'none';
+    waitingScreen.style.display = 'block';
+    roomCodeDisplay.textContent = roomCode;
+    startRaceBtn.style.display = isHost ? 'block' : 'none';
+    waitingHostNote.textContent = isHost
+      ? 'En az 1 kişi daha katılınca yarışı başlatabilirsin (istersen tek başına da başlatabilirsin).'
+      : 'Oda sahibinin yarışı başlatmasını bekle...';
+  }
+
+  socket.on('room-update', ({ players: list, hostId }) => {
+    players = list;
+    isHost = hostId === myId;
+    startRaceBtn.style.display = isHost ? 'block' : 'none';
+    playerListEl.innerHTML = list.map(p =>
+      `<li><span>${p.name}</span>${p.id === hostId ? '<span class="host-tag">👑 KURUCU</span>' : ''}</li>`
+    ).join('');
+    updateRaceBar();
+  });
+
+  startRaceBtn.addEventListener('click', () => {
+    socket.emit('start-race');
+  });
+
+  backToLobbyBtn.addEventListener('click', () => {
+    socket.emit('leave-room');
+    location.reload();
+  });
+
+  // ---- Yarış çubuğu (herkesin ilerlemesi) ----
+  function updateRaceBar() {
+    raceBarEl.innerHTML = players.map(p => {
+      const pct = Math.min(100, (p.distance / finishDistance) * 100);
+      const mine = p.id === myId;
+      return `
+        <div class="race-name">${p.name}${mine ? ' (sen)' : ''}${p.finished ? ' 🏁' : ''}</div>
+        <div class="race-lane">
+          <div class="race-marker" style="left:${pct}%;">${mine ? '🦖' : '🏃'}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // ---- Yarış: fizik ve çizim ----
+  let gameActive = false;
+  let raceOver = false;
+  let myDistance = 0;
+  let speed = 3.4; // birim/kare
+  let stunFrames = 0;
+
+  const runner = {
+    y: 0,
+    vy: 0,
+    height: 34,
+    width: 28,
+    gravity: 0.85,
+    jumpForce: -13.5,
+    isJumping: false
+  };
+  runner.y = GROUND_Y - runner.height;
+
+  let obstacles = []; // [{distance, width, height}]
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function generateTrack(trackSeed) {
+    const rand = mulberry32(trackSeed);
+    const list = [];
+    let d = 350;
+    while (d < finishDistance - 120) {
+      list.push({ distance: d, width: 22, height: 30 + Math.floor(rand() * 20) });
+      d += 170 + rand() * 190;
+    }
+    return list;
+  }
+
+  socket.on('race-started', ({ startAt }) => {
+    obstacles = generateTrack(seed);
+    myDistance = 0;
+    speed = 3.4;
+    stunFrames = 0;
+    runner.y = GROUND_Y - runner.height;
+    runner.vy = 0;
+    runner.isJumping = false;
+    raceOver = false;
+    resultOverlay.style.display = 'none';
+
+    waitingScreen.style.display = 'none';
+    raceScreen.style.display = 'flex';
+
+    const tick = () => {
+      const remaining = startAt - Date.now();
+      if (remaining <= 0) {
+        countdownOverlay.style.display = 'none';
+        gameActive = true;
+        requestAnimationFrame(loop);
+        return;
+      }
+      countdownOverlay.style.display = 'flex';
+      countdownNumber.textContent = Math.ceil(remaining / 1000);
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+
+  function jump() {
+    if (!gameActive || raceOver) return;
+    if (!runner.isJumping) {
+      runner.vy = runner.jumpForce;
+      runner.isJumping = true;
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'ArrowUp') {
+      e.preventDefault();
+      jump();
+    }
+  });
+  canvas.addEventListener('mousedown', jump);
+  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); jump(); }, { passive: false });
+
+  let lastEmit = 0;
+
+  function update() {
+    if (!gameActive || raceOver) return;
+
+    if (stunFrames > 0) {
+      stunFrames--;
+    } else {
+      myDistance += speed;
+    }
+
+    runner.vy += runner.gravity;
+    runner.y += runner.vy;
+    const floorY = GROUND_Y - runner.height;
+    if (runner.y > floorY) {
+      runner.y = floorY;
+      runner.vy = 0;
+      runner.isJumping = false;
+    }
+
+    // Çarpışma kontrolü: yaklaşan engellerden birine değdiysek küçük bir ceza uygula
+    for (const o of obstacles) {
+      if (o.hit) continue;
+      const obstacleScreenX = 100 + (o.distance - myDistance);
+      if (obstacleScreenX > 85 && obstacleScreenX < 115) {
+        const runnerBottom = runner.y + runner.height;
+        const obstacleTop = GROUND_Y - o.height;
+        if (runnerBottom > obstacleTop + 6) {
+          o.hit = true;
+          stunFrames = 30;
+          speed = Math.max(2, speed - 0.3);
+        }
+      }
+    }
+
+    if (myDistance >= finishDistance && !raceOver) {
+      myDistance = finishDistance;
+      raceOver = true;
+      socket.emit('finish-race');
+    }
+
+    const now = performance.now();
+    if (now - lastEmit > 120) {
+      socket.emit('update-progress', { distance: Math.floor(myDistance) });
+      lastEmit = now;
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#0d151b';
+    ctx.fillRect(0, 0, W, H);
+
+    // Zemin
+    ctx.strokeStyle = '#37474f';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, GROUND_Y);
+    ctx.lineTo(W, GROUND_Y);
+    ctx.stroke();
+
+    // Bitiş çizgisi
+    const finishScreenX = 100 + (finishDistance - myDistance);
+    if (finishScreenX > -20 && finishScreenX < W + 20) {
+      ctx.fillStyle = '#ffd54f';
+      ctx.fillRect(finishScreenX, GROUND_Y - 90, 4, 90);
+      ctx.fillStyle = '#0d151b';
+      ctx.font = 'bold 11px monospace';
+      ctx.fillText('BİTİŞ', finishScreenX - 10, GROUND_Y - 96);
+    }
+
+    // Engeller
+    ctx.fillStyle = '#ef5350';
+    obstacles.forEach(o => {
+      const x = 100 + (o.distance - myDistance);
+      if (x > -30 && x < W + 30) {
+        ctx.fillRect(x - o.width / 2, GROUND_Y - o.height, o.width, o.height);
+      }
+    });
+
+    // Koşucu (basit blok karakter)
+    ctx.fillStyle = stunFrames > 0 ? '#ffb74d' : '#4fc3f7';
+    ctx.fillRect(100 - runner.width / 2, runner.y, runner.width, runner.height);
+  }
+
+  function loop() {
+    update();
+    draw();
+    updateRaceBar();
+    if (!raceOver) {
+      requestAnimationFrame(loop);
+    } else {
+      draw();
+    }
+  }
+
+  socket.on('race-over', () => {
+    gameActive = false;
+    const finishers = players
+      .filter(p => p.finished)
+      .sort((a, b) => (a.placement || 99) - (b.placement || 99));
+    const others = players.filter(p => !p.finished);
+    const finalList = [...finishers, ...others];
+
+    resultListEl.innerHTML = finalList.map((p, i) => {
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      return `<li>${medal} ${p.name}${p.finished ? '' : ' (bitirmedi)'}</li>`;
+    }).join('');
+    resultOverlay.style.display = 'flex';
+  });
+
+  draw();
+})();
+</script>
+
+</body>
+</html>
