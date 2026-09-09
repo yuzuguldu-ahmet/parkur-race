@@ -37,6 +37,7 @@ function roomPlayerList(room) {
   return Array.from(room.players.entries()).map(([id, p]) => ({
     id,
     name: p.name,
+    character: p.character,
     distance: p.distance,
     finished: p.finished,
     placement: p.placement
@@ -55,7 +56,7 @@ function broadcastPlayerList(code) {
 io.on('connection', (socket) => {
   socket.data.roomCode = null;
 
-  socket.on('create-room', ({ name }) => {
+  socket.on('create-room', ({ name, character }) => {
     const code = generateRoomCode();
     const seed = Math.floor(Math.random() * 1e9);
     rooms.set(code, {
@@ -63,7 +64,7 @@ io.on('connection', (socket) => {
       seed,
       started: false,
       finishDistance: FINISH_DISTANCE,
-      players: new Map([[socket.id, { name: (name || 'Oyuncu').slice(0, 14), distance: 0, finished: false, finishTime: null, placement: null }]])
+      players: new Map([[socket.id, { name: (name || 'Oyuncu').slice(0, 14), character: character || 'Kaykaycı Kai', distance: 0, finished: false, finishTime: null, placement: null }]])
     });
     socket.join(code);
     socket.data.roomCode = code;
@@ -71,7 +72,7 @@ io.on('connection', (socket) => {
     broadcastPlayerList(code);
   });
 
-  socket.on('join-room', ({ code, name }) => {
+  socket.on('join-room', ({ code, name, character }) => {
     code = (code || '').toUpperCase().trim();
     const room = rooms.get(code);
     if (!room) {
@@ -86,7 +87,7 @@ io.on('connection', (socket) => {
       socket.emit('join-error', { message: 'Oda dolu (maks. 8 kişi).' });
       return;
     }
-    room.players.set(socket.id, { name: (name || 'Oyuncu').slice(0, 14), distance: 0, finished: false, finishTime: null, placement: null });
+    room.players.set(socket.id, { name: (name || 'Oyuncu').slice(0, 14), character: character || 'Kaykaycı Kai', distance: 0, finished: false, finishTime: null, placement: null });
     socket.join(code);
     socket.data.roomCode = code;
     socket.emit('room-joined', {
